@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DailyTrack">
+  <defs>
+    <linearGradient id="bg" x1="88" y1="52" x2="424" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fbfc" />
+      <stop offset="0.52" stop-color="#e8f4ef" />
+      <stop offset="1" stop-color="#f6ecdc" />
+    </linearGradient>
+    <linearGradient id="mark" x1="142" y1="140" x2="370" y2="372" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f6fd6" />
+      <stop offset="0.48" stop-color="#0f8b8d" />
+      <stop offset="1" stop-color="#2f855a" />
+    </linearGradient>
+    <filter id="shadow" x="74" y="80" width="364" height="364" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#1c2126" flood-opacity="0.18" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <g filter="url(#shadow)">
+    <rect x="112" y="120" width="288" height="288" rx="86" fill="rgba(255,255,255,0.74)" />
+    <path d="M169 264l54 54 122-130" fill="none" stroke="url(#mark)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M346 297l11 38 38 11-38 11-11 38-11-38-38-11 38-11 11-38Z" fill="#d8aa63" />
+  </g>
+</svg>

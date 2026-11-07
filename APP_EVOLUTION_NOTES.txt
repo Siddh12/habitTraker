@@ -1,0 +1,179 @@
+DailyTrack App Evolution Notes
+Last updated: 2026-11-02
+
+Purpose
+DailyTrack is evolving from a basic habit/task tracker into a calm desktop companion. The app should help the user see what matters now, complete work quickly, understand daily history, and build consistency without clutter.
+
+Core Product Direction
+1. The full app is the planning and history space.
+2. The desktop widget is the lightweight "now" layer.
+3. The widget should feel like an Apple-style glass widget: quiet, useful, compact, and not visually loud.
+4. The widget should not fight the user's work. It should sit like a desktop object, not float over browsers and other apps.
+5. User control matters: settings should decide appearance, time format, and whether the desktop widget is visible.
+
+Authentication and Profile
+1. The app uses email OTP sign-in.
+2. Signup now asks for the user's name.
+3. The profile name is saved in app state.
+4. The widget greeting uses the saved name when available.
+5. If a name is not saved, the app derives a readable name from the email address.
+
+Main App Structure
+1. Today view shows the current day, progress, tasks, habits, counters, timing, and money.
+2. Calendar view shows day-wise history and future planning.
+3. Trackers view manages tasks, habits, counters, time trackers, sections, repeat rules, and widget visibility.
+4. History view lets the user inspect past days.
+5. Reports view shows completion, streaks, spending, late items, and timing patterns.
+6. Settings view controls appearance, clock format, and desktop widget visibility.
+
+Widget Design Evolution
+1. The widget started as a small DailyTrack panel with task counts and today's task list.
+2. It was redesigned toward transparent glass with Apple-style material, blur, borders, and soft text.
+3. The white/acrylic Electron background layer was removed so only one glass layer remains.
+4. The panel height became dynamic so it shrinks when there are fewer tasks and grows only when needed.
+5. The widget is capped at 3 visible tasks to prevent clutter.
+6. The old DailyTrack brand label was replaced with a personalized greeting.
+7. The date remains under the greeting.
+8. The completion count became a half-width card.
+9. A digital clock fills the other half.
+10. The clock can use 12 hour or 24 hour format from Settings.
+11. The clock card was simplified to show only the time and AM/PM.
+12. The clock date and "Now" label were removed because the widget already shows the date.
+13. A subtle seconds progress line was added across the bottom of the clock card.
+14. The line fills left to right with a light-to-dark gradient and resets cleanly each minute.
+
+Current Widget Task Rules
+1. Selected widget tasks have priority.
+2. Timed tasks can automatically appear around their planned time even if not selected for the widget.
+3. The automatic timed window is currently from 1 hour before planned time to 1 hour after planned time.
+4. If selected widget tasks are finished but other tasks remain, the widget falls back to showing remaining tasks.
+5. The widget should not show "No widget tasks" while there is still work left today.
+6. If all tasks are finished, the widget shows a celebration state instead of an empty state.
+7. Widget tasks are sorted by urgency, planned time, and tracker order.
+
+Completion and Motivation
+1. When all tasks are complete, the widget shows a compact celebration card.
+2. The celebration card includes a popper, streak, and trophy signal.
+3. It also shows a short motivational quote.
+4. Quotes rotate over time so the completion state feels alive but not noisy.
+5. Current quotes:
+   - Clean board. Clear mind.
+   - You kept the promise today.
+   - Small wins compound.
+   - Done for today. Keep the rhythm.
+   - Consistency is quiet power.
+6. The celebration card also shows streak count and completed count.
+7. Animation is intentionally small: card entrance, small icon pop, and quote swipe.
+
+Streak Thinking
+1. A weekly streak concept was added.
+2. The calendar can show win days, partial days, and future days.
+3. A day can feel successful based on task completion.
+4. The widget celebration uses daily win streak information.
+5. The design direction is consistency over pressure: reward completion but avoid clutter.
+
+Calendar Evolution
+1. Calendar became more than a streak display.
+2. It now supports reviewing past tasks and planning future tasks.
+3. The user can see what was done, what was planned, what is coming, and day-level details.
+4. Today's date is highlighted.
+5. Days show workload intensity so heavy and light days are easier to scan.
+6. Completion trophies appear on calendar days in the same visual language as profile trophies.
+
+Profile and Trophy Evolution
+1. The profile card uses a compact crown/trophy style.
+2. Completion trophies were moved and refined to match the profile visual style.
+3. Trophy icons were made smaller after review.
+4. Profile and calendar/trophy visuals should feel connected, not separate design languages.
+
+Desktop Widget Behavior
+1. The widget used to be always on top.
+2. That made it appear over browsers and other apps, which was not desired.
+3. The widget is now intended to behave like a desktop widget above the wallpaper, not above active work.
+4. The panel is no longer always-on-top.
+5. It is also skipped from the taskbar so it feels more like a widget.
+6. Settings now include Desktop Widget visibility:
+   - Show widget: keep the glass widget on the desktop.
+   - Hide widget: use the full app only.
+7. If the widget is hidden and the app starts later, the full app should open so the user is not stuck with no visible window.
+
+Window Controls Evolution
+1. The widget originally had open, minimize, and close buttons.
+2. Those buttons were made smaller to feel more Apple-like.
+3. The next direction is to hide those visible controls completely.
+4. Close and minimize are no longer needed inside the widget.
+5. The full app Settings area manages whether the desktop widget is shown or hidden.
+6. Opening the full app from the widget should work without visible controls.
+7. Current interaction decision:
+   - Click the greeting/date to open DailyTrack.
+   - Double-click the glass widget to open DailyTrack.
+
+Appearance Settings
+1. Appearance supports System, Light, and Dark.
+2. The widget follows the app preference.
+3. Glass text has separate opacity levels for primary, strong, secondary, tertiary, labels, and controls.
+4. Dark mode uses muted blue-gray text instead of bright white.
+5. The goal is readable but calm text on glass.
+
+Clock Settings
+1. Settings include Clock Format.
+2. User can choose 12 hour or 24 hour.
+3. This affects widget clock and task time display.
+4. The clock uses tabular numeric styling so it does not visually jump.
+
+Delay / Postpone Feature
+1. New product need: users sometimes cannot do a task now and need to delay it by an hour, a day, or a custom date/time.
+2. Design decision: make delaying easy, but not emotionally invisible.
+3. The action is available from task rows as a small clock/history style button beside completion controls.
+4. The delay modal offers:
+   - Delay 1 hour.
+   - Move to tomorrow.
+   - Custom date and time.
+5. A delayed task receives a visible Delayed tag.
+6. The tag is intentionally warm/amber instead of celebratory green so it feels like a moved promise, not a win.
+7. The delay stores count and history so repeated delays can show stronger accountability, such as "2x Delayed".
+8. Calendar and widget logic should respect the delayed target date/time, so delayed tasks appear where the user moved them.
+9. The original intent is still remembered so the app can communicate that the promise was delayed, not simply edited.
+10. This feature should stay clean and minimal: no shame-heavy copy, no clutter, only enough regret to create awareness.
+
+Design Principles Being Followed
+1. Keep the widget minimal.
+2. Avoid clutter.
+3. Show only what matters now.
+4. Let the full app handle deep planning and history.
+5. Use quiet glass, soft borders, and restrained typography.
+6. Add animation only where it clarifies state or rewards completion.
+7. Do not make the widget compete with the user's active work.
+
+Future Ideas
+1. Add a tray menu with Open DailyTrack, Show Widget, Hide Widget, and Quit.
+2. Add a setting for widget position or snap to desktop corners.
+3. Add a small onboarding hint: "Click greeting to open app" only once.
+4. Add custom user quotes for completion.
+5. Add task priority levels for widget ordering.
+6. Add a "focus window" mode where only the next task is shown.
+7. Add backup/export for app state.
+8. Add a clearer way to edit profile name after signup.
+9. Add a calendar quick-add for future planned tasks.
+10. Add smarter workload balancing suggestions in Calendar.
+
+Open Product Questions
+1. Should the widget ever show overdue tasks older than 1 hour, or only the nearest unfinished item?
+2. Should clicking a completed celebration card open the full app?
+3. Should hiding the widget also hide it after app restart, or only for the current session?
+4. Should there be a system tray icon for users who hide both the widget and full app?
+5. Should the widget be draggable from every empty area or only the header?
+
+Current Main App Entry Points
+1. From widget: click greeting/date.
+2. From widget: double-click empty glass area.
+3. From full app: Settings can show or hide the widget.
+
+Implementation Notes
+1. The app is Electron.
+2. App state is stored per signed-in user.
+3. Preferences are sanitized in main.js and mirrored in app.js and panel.js.
+4. Widget UI lives in panel.js and panel.css.
+5. Full app UI lives in app.js and styles.css.
+6. The widget height is dynamically resized from the rendered content.
+7. The panel is transparent and uses CSS glass styling, not the old Electron acrylic layer.

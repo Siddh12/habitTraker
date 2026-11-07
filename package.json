@@ -1,0 +1,19 @@
+{
+  "name": "dailytrack-desktop",
+  "version": "1.0.0",
+  "description": "A desktop routine, task, habit, and expense tracker.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "serve": "node .codex-local-server.cjs",
+    "mobile": "node .codex-local-server.cjs",
+    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check panel.js && node --check pwa.js && node --check sw.js && node --check .codex-local-server.cjs"
+  },
+  "dependencies": {
+    "nodemailer": "^10.2.1",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
