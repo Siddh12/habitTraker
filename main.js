@@ -17,6 +17,8 @@ const DEFAULT_STATE = {
     appearance: "system",
     timeFormat: "12",
     desktopWidget: true,
+    missedWorkReminders: true,
+    missedWorkDismissedSignature: "",
   },
 };
 
@@ -326,7 +328,9 @@ function sanitizePreferences(value) {
   const appearance = ["system", "light", "dark"].includes(value?.appearance) ? value.appearance : "system";
   const timeFormat = ["12", "24"].includes(String(value?.timeFormat)) ? String(value.timeFormat) : "12";
   const desktopWidget = typeof value?.desktopWidget === "boolean" ? value.desktopWidget : true;
-  return { appearance, timeFormat, desktopWidget };
+  const missedWorkReminders = typeof value?.missedWorkReminders === "boolean" ? value.missedWorkReminders : true;
+  const missedWorkDismissedSignature = typeof value?.missedWorkDismissedSignature === "string" ? value.missedWorkDismissedSignature.slice(0, 2000) : "";
+  return { appearance, timeFormat, desktopWidget, missedWorkReminders, missedWorkDismissedSignature };
 }
 
 function shouldShowPanelWindow() {

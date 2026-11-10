@@ -1,5 +1,7 @@
 const STORAGE_KEY = "dailytrack-state-v1";
 const NEW_SECTION_VALUE = "__new_section__";
+const MISSED_WORK_LOOKBACK_DAYS = 30;
+const MISSED_WORK_DISPLAY_LIMIT = 8;
 
 const trackerTypes = {
   checkbox: {
@@ -48,6 +50,11 @@ const desktopWidgetModes = [
   ["off", "x", "Hide widget", "Use full app only"],
 ];
 
+const missedWorkReminderModes = [
+  ["on", "history", "Show reminders", "Open catch-up on launch"],
+  ["off", "x", "Mute reminders", "Keep the Today banner only"],
+];
+
 const mainAppTabs = [
   ["today", "check-circle", "Today"],
   ["calendar", "calendar", "Calendar"],
@@ -80,6 +87,7 @@ let ui = {
   achievement: null,
   achievementTimer: null,
   completionPopover: false,
+  missedWorkPrompted: false,
   session: null,
   auth: {
     name: "",
@@ -117,10 +125,12 @@ async function initApp() {
     desktopApi.onSessionUpdated(async () => {
       ui.session = await desktopApi.getSession();
       if (ui.session) state = await desktopApi.getState();
+      maybeOpenMissedWorkPrompt();
       render();
     });
   }
 
+  maybeOpenMissedWorkPrompt();
   render();
 }
 
@@ -137,6 +147,8 @@ function loadState() {
       appearance: "system",
       timeFormat: "12",
       desktopWidget: true,
+      missedWorkReminders: true,
+      missedWorkDismissedSignature: "",
     },
   };
 
@@ -169,6 +181,8 @@ function normalizePreferences(value) {
     appearance: ["system", "light", "dark"].includes(value?.appearance) ? value.appearance : "system",
     timeFormat: ["12", "24"].includes(String(value?.timeFormat)) ? String(value.timeFormat) : "12",
     desktopWidget: typeof value?.desktopWidget === "boolean" ? value.desktopWidget : true,
+    missedWorkReminders: typeof value?.missedWorkReminders === "boolean" ? value.missedWorkReminders : true,
+    missedWorkDismissedSignature: typeof value?.missedWorkDismissedSignature === "string" ? value.missedWorkDismissedSignature.slice(0, 2000) : "",
   };
 }
 
@@ -191,6 +205,28 @@ function getTimeFormat() {
 function getDesktopWidgetMode() {
   state.preferences = normalizePreferences(state.preferences);
   return state.preferences.desktopWidget ? "on" : "off";
+}
+
+function getMissedWorkReminderMode() {
+  state.preferences = normalizePreferences(state.preferences);
+  return state.preferences.missedWorkReminders === false ? "off" : "on";
+}
+
+function maybeOpenMissedWorkPrompt() {
+  if (ui.missedWorkPrompted || ui.modal) return;
+  if (getMissedWorkReminderMode() === "off") return;
+
+  const missedWork = getMissedWorkSummary();
+  if (!missedWork.total) return;
+
+  state.preferences = normalizePreferences(state.preferences);
+  if (state.preferences.missedWorkDismissedSignature === missedWork.signature) return;
+
+  ui.missedWorkPrompted = true;
+  ui.modal = {
+    kind: "missed-work",
+    signature: missedWork.signature,
+  };
 }
 
 function applyAppearance() {
@@ -491,11 +527,13 @@ function renderToday() {
   const date = toDateKey(new Date());
   const trackers = getTrackersForDate(date);
   const expenses = getExpenses(date);
+  const missedWork = getMissedWorkSummary();
   const isEmpty = state.sections.length === 0 && state.trackers.length === 0 && expenses.length === 0;
 
   return `
     <main class="workspace">
       ${isEmpty ? renderEmptyHero() : renderHeroSummary(date)}
+      ${!isEmpty && missedWork.total ? renderMissedWorkBanner(missedWork) : ""}
       ${!isEmpty ? renderStats(date) : ""}
       ${!isEmpty ? renderStreakSummary(date) : ""}
       ${!isEmpty ? renderTodayBoard(date, trackers, expenses) : ""}
@@ -682,14 +720,45 @@ function renderStat(iconName, label, value) {
   `;
 }
 
+function renderMissedWorkBanner(summary) {
+  const dayText = `${summary.days} day${summary.days === 1 ? "" : "s"}`;
+  const itemText = `${summary.total} missed ${summary.total === 1 ? "item" : "items"}`;
+  const previewItems = summary.items.slice(0, 3);
+
+  return `
+    <section class="missed-work-banner" aria-label="${escAttr(itemText)}">
+      <div class="missed-work-main">
+        <span class="missed-work-icon">${icon("history")}</span>
+        <div class="missed-work-copy">
+          <span class="missed-work-kicker">${esc(itemText)}</span>
+          <h3>Catch up before today gets busy.</h3>
+          <p>${esc(`${dayText} still has open work. Review it, mark what was actually done, or move the promise into today.`)}</p>
+          <div class="missed-work-preview" aria-label="Missed task preview">
+            ${previewItems.map((item) => `<span class="missed-work-chip">${esc(item.tracker.name)} <em>${esc(shortDateLabel(item.date))}</em></span>`).join("")}
+            ${summary.hidden ? `<span class="missed-work-chip more">+${summary.hidden} more</span>` : ""}
+          </div>
+        </div>
+      </div>
+      <div class="missed-work-actions">
+        <button class="action-button primary" type="button" data-action="open-missed-work">${icon("list-check")} Review</button>
+        <button class="action-button soft" type="button" data-action="move-all-missed-to-today">${icon("calendar")} Move all to today</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderTodayBoard(date, trackers, expenses) {
   const grouped = groupTrackersBySection(trackers);
   const hasTrackers = grouped.length > 0;
 
   return `
     <section class="today-grid">
-      ${hasTrackers ? grouped.map((group) => renderTrackerGroup(group, date, false)).join("") : renderSmallEmpty("No trackers for today.", "Add a tracker or update repeat settings.")}
-      ${renderExpensePanel(date, expenses, true)}
+      <div class="today-section-stack">
+        ${hasTrackers ? grouped.map((group) => renderTrackerGroup(group, date, false)).join("") : renderSmallEmpty("No trackers for today.", "Add a tracker or update repeat settings.")}
+      </div>
+      <aside class="today-side-stack">
+        ${renderExpensePanel(date, expenses, true)}
+      </aside>
     </section>
   `;
 }
@@ -832,6 +901,7 @@ function renderCalendar() {
 function renderPlannerCalendarDay(day, index) {
   const dayNumber = parseDateKey(day.date).getDate();
   const detail = getCalendarDayDetail(day);
+  const shortLabel = getCalendarDayShortLabel(day);
   const progress = day.total ? Math.min(1, day.done / day.total) : 0;
   const loadTitle = day.total ? ` ${day.total} item${day.total === 1 ? "" : "s"} scheduled. Usual day has ${day.loadAverageLabel}.` : " No scheduled items.";
   const title = `${formatCalendarDate(day.date)}: ${detail}.${loadTitle}`;
@@ -852,6 +922,7 @@ function renderPlannerCalendarDay(day, index) {
       ${renderPlannerCompletionTrophies(day.completedItems, day.total)}
       <span class="planner-day-top">
         <span class="planner-day-number">${dayNumber}</span>
+        ${shortLabel ? `<span class="planner-day-count">${esc(shortLabel)}</span>` : ""}
         ${day.streak.win ? `<span class="planner-day-flame">${icon("flame")}</span>` : ""}
       </span>
       <span class="planner-day-detail">${esc(detail)}</span>
@@ -1037,6 +1108,13 @@ function getCalendarDayDetail(day) {
   if (day.total) return `${day.done}/${day.total} done`;
   if (day.expenseCount) return `${day.expenseCount} expense${day.expenseCount === 1 ? "" : "s"}`;
   return day.isToday ? "Today" : "No activity";
+}
+
+function getCalendarDayShortLabel(day) {
+  if (day.total && day.isFuture) return String(day.total);
+  if (day.total) return `${day.done}/${day.total}`;
+  if (day.expenseCount) return `${day.expenseCount} exp`;
+  return "";
 }
 
 function getCalendarStatusLabel(day) {
@@ -1292,6 +1370,7 @@ function renderSettings() {
   const appearance = getAppearanceMode();
   const timeFormat = getTimeFormat();
   const desktopWidget = getDesktopWidgetMode();
+  const missedWorkReminders = getMissedWorkReminderMode();
 
   return `
     <main class="workspace">
@@ -1355,6 +1434,27 @@ function renderSettings() {
               .map(
                 ([mode, iconName, label, detail]) => `
                   <button class="appearance-option ${desktopWidget === mode ? "is-active" : ""}" type="button" data-action="set-desktop-widget" data-desktop-widget="${escAttr(mode)}">
+                    ${icon(iconName)}
+                    <span>${esc(label)}</span>
+                    <small>${esc(detail)}</small>
+                  </button>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">${icon("history")} Missed Work</h3>
+              <p class="panel-subtitle">Choose whether DailyTrack opens a catch-up dialog when previous task promises are still open.</p>
+            </div>
+          </div>
+          <div class="appearance-control reminder-control" role="group" aria-label="Missed work reminder behavior">
+            ${missedWorkReminderModes
+              .map(
+                ([mode, iconName, label, detail]) => `
+                  <button class="appearance-option ${missedWorkReminders === mode ? "is-active" : ""}" type="button" data-action="set-missed-work-reminders" data-missed-work-reminders="${escAttr(mode)}">
                     ${icon(iconName)}
                     <span>${esc(label)}</span>
                     <small>${esc(detail)}</small>
@@ -1705,6 +1805,10 @@ function renderModal() {
     return renderDelayForm();
   }
 
+  if (ui.modal.kind === "missed-work") {
+    return renderMissedWorkModal();
+  }
+
   if (ui.modal.kind === "section") {
     return renderSectionForm();
   }
@@ -1943,6 +2047,81 @@ function renderDelayForm() {
   return modalShell("Delay task", body);
 }
 
+function renderMissedWorkModal() {
+  const summary = getMissedWorkSummary();
+
+  if (!summary.total) {
+    return modalShell(
+      "Missed work",
+      `
+        <div class="missed-work-modal">
+          <div class="missed-work-dialog-summary is-clear">
+            <span class="missed-work-icon">${icon("check-circle")}</span>
+            <div>
+              <strong>Nothing overdue now</strong>
+              <p>Every missed task is either complete or moved back into your plan.</p>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="action-button primary" type="button" data-action="close-modal">${icon("check")} Done</button>
+          </div>
+        </div>
+      `,
+    );
+  }
+
+  const hiddenText = summary.hidden ? `<p class="field-help">${summary.hidden} older item${summary.hidden === 1 ? "" : "s"} not shown here. Use the calendar for the full history.</p>` : "";
+
+  return modalShell(
+    "Missed work",
+    `
+      <div class="missed-work-modal">
+        <div class="missed-work-dialog-summary">
+          <span class="missed-work-icon">${icon("history")}</span>
+          <div>
+            <strong>${summary.total} open ${summary.total === 1 ? "item" : "items"} from ${summary.days} missed ${summary.days === 1 ? "day" : "days"}</strong>
+            <p>Mark what you actually finished, or move the promise into today so it stays visible.</p>
+          </div>
+        </div>
+        <div class="missed-work-list">
+          ${summary.items.map(renderMissedWorkItem).join("")}
+        </div>
+        ${hiddenText}
+        <div class="modal-actions">
+          <button class="action-button" type="button" data-action="dismiss-missed-work">Not now</button>
+          <button class="action-button soft" type="button" data-action="open-missed-date" data-date="${escAttr(summary.items[0]?.date || toDateKey(new Date()))}">${icon("calendar")} Open latest date</button>
+          <button class="action-button primary" type="button" data-action="move-all-missed-to-today">${icon("calendar")} Move all to today</button>
+        </div>
+      </div>
+    `,
+  );
+}
+
+function renderMissedWorkItem(item) {
+  const plannedTime = item.plannedTime ? `Planned ${formatDisplayTime(item.plannedTime)}` : "No fixed time";
+  const delayLabel = item.reason === "delayed" ? "Delayed promise" : "Original task";
+  const type = item.tracker.type || "task";
+  return `
+    <article class="missed-work-item">
+      <span class="type-icon ${escAttr(type)}">${icon(trackerTypes[type]?.icon || "circle")}</span>
+      <div class="missed-work-item-body">
+        <strong>${esc(item.tracker.name)}</strong>
+        <p>${esc(formatCalendarDate(item.date))} - ${esc(getMissedWorkAgeLabel(item.date))}</p>
+        <span class="tracker-meta">
+          <span class="pill">${esc(getSectionName(item.tracker.sectionId))}</span>
+          <span class="pill">${esc(plannedTime)}</span>
+          <span class="pill late">${esc(delayLabel)}</span>
+        </span>
+      </div>
+      <div class="missed-work-item-actions">
+        <button class="action-button soft" type="button" data-action="open-missed-date" data-date="${escAttr(item.date)}">${icon("calendar")} Date</button>
+        <button class="action-button soft" type="button" data-action="mark-missed-done" data-id="${escAttr(item.tracker.id)}" data-date="${escAttr(item.date)}">${icon("check")} Done</button>
+        <button class="action-button primary" type="button" data-action="move-missed-to-today" data-id="${escAttr(item.tracker.id)}" data-date="${escAttr(item.date)}">${icon("history")} Today</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderSectionForm() {
   const editSection = ui.modal.editId ? state.sections.find((section) => section.id === ui.modal.editId) : null;
   const form = `
@@ -2081,6 +2260,17 @@ function handleClick(event) {
     return;
   }
 
+  if (action === "set-missed-work-reminders") {
+    const missedWorkReminders = button.dataset.missedWorkReminders !== "off";
+    state.preferences = {
+      ...normalizePreferences(state.preferences),
+      missedWorkReminders,
+    };
+    saveState();
+    render();
+    return;
+  }
+
   if (action === "set-calendar-date") {
     ui.activeDate = button.dataset.date || toDateKey(new Date());
     render();
@@ -2172,6 +2362,40 @@ function handleClick(event) {
 
   if (action === "apply-delay") {
     applyDelayPreset(button.dataset.id, button.dataset.date || toDateKey(new Date()), button.dataset.delayPreset || "hour");
+    return;
+  }
+
+  if (action === "open-missed-work") {
+    ui.modal = { kind: "missed-work", signature: getMissedWorkSummary().signature };
+    render();
+    return;
+  }
+
+  if (action === "dismiss-missed-work") {
+    dismissMissedWork();
+    return;
+  }
+
+  if (action === "open-missed-date") {
+    ui.modal = null;
+    ui.view = "calendar";
+    ui.activeDate = button.dataset.date || toDateKey(new Date());
+    render();
+    return;
+  }
+
+  if (action === "move-missed-to-today") {
+    moveMissedWorkToToday(button.dataset.id, button.dataset.date || toDateKey(new Date()));
+    return;
+  }
+
+  if (action === "move-all-missed-to-today") {
+    moveAllMissedWorkToToday();
+    return;
+  }
+
+  if (action === "mark-missed-done") {
+    markMissedWorkDone(button.dataset.id, button.dataset.date || toDateKey(new Date()));
     return;
   }
 
@@ -2369,6 +2593,7 @@ async function verifyOtp(data) {
   }
   ui.view = "today";
   ui.auth = { name: "", email: "", otpSent: false, message: "", devCode: "" };
+  maybeOpenMissedWorkPrompt();
   render();
 }
 
@@ -2432,7 +2657,7 @@ function saveDelay(data) {
   delayTracker(tracker, sourceDate, { targetDate, targetTime }, "custom");
 }
 
-function delayTracker(tracker, sourceDate, target, preset) {
+function delayTracker(tracker, sourceDate, target, preset, options = {}) {
   const safeSourceDate = sourceDate || toDateKey(new Date());
   const safeTargetDate = target.targetDate < safeSourceDate ? safeSourceDate : target.targetDate;
   const targetTime = normalizeTimeValue(target.targetTime) || "";
@@ -2461,8 +2686,92 @@ function delayTracker(tracker, sourceDate, target, preset) {
   };
   tracker.delayHistory = [...(Array.isArray(tracker.delayHistory) ? tracker.delayHistory : []), event].slice(-12);
 
+  if (options.deferSave) return;
   saveState();
   ui.modal = null;
+  render();
+}
+
+function dismissMissedWork() {
+  const summary = getMissedWorkSummary();
+  state.preferences = {
+    ...normalizePreferences(state.preferences),
+    missedWorkDismissedSignature: summary.signature,
+  };
+  saveState();
+  ui.modal = null;
+  render();
+}
+
+function moveMissedWorkToToday(id, date, options = {}) {
+  const tracker = state.trackers.find((item) => item.id === id);
+  const today = toDateKey(new Date());
+  if (!tracker || !date || date >= today) return false;
+
+  const targetTime = getEffectivePlannedTime(tracker, date) || tracker.plannedTime || "";
+  delayTracker(
+    tracker,
+    date,
+    {
+      targetDate: today,
+      targetTime,
+    },
+    "catch-up",
+    { deferSave: true },
+  );
+
+  if (options.deferSave) return true;
+  finishMissedWorkBatch();
+  return true;
+}
+
+function moveAllMissedWorkToToday() {
+  const summary = getMissedWorkSummary(Number.POSITIVE_INFINITY);
+  if (!summary.total) return;
+
+  summary.items.forEach((item) => {
+    moveMissedWorkToToday(item.tracker.id, item.date, { deferSave: true });
+  });
+  finishMissedWorkBatch();
+}
+
+function markMissedWorkDone(id, date, options = {}) {
+  const tracker = state.trackers.find((item) => item.id === id);
+  if (!tracker || !date) return false;
+
+  const log = ensureLog(date, id);
+  const completionTime = getEffectivePlannedTime(tracker, date) || currentTimeValue();
+
+  if (tracker.type === "counter") {
+    const goal = Math.max(1, Number(tracker.goal || 1));
+    const count = getCounterCount(date, id);
+    for (let index = count; index < goal; index += 1) {
+      log.entries.push({
+        id: createId("entry"),
+        amount: 1,
+        at: completionTime,
+      });
+    }
+    log.goalCelebrated = true;
+  } else if (tracker.type === "time") {
+    log.time = completionTime;
+    log.completed = true;
+  } else {
+    log.completed = true;
+    log.completedAt = completionTime;
+    if (tracker.completionMode === "manual-time") log.actualTime = completionTime;
+    log.completionCelebrated = true;
+  }
+
+  if (options.deferSave) return true;
+  finishMissedWorkBatch();
+  return true;
+}
+
+function finishMissedWorkBatch() {
+  const remaining = getMissedWorkSummary();
+  if (ui.modal?.kind === "missed-work" && !remaining.total) ui.modal = null;
+  saveState();
   render();
 }
 
@@ -2963,6 +3272,111 @@ function getRecentDateKeys(count) {
     date.setDate(date.getDate() - (count - 1 - index));
     return toDateKey(date);
   });
+}
+
+function getMissedWorkSummary(limit = MISSED_WORK_DISPLAY_LIMIT) {
+  const allItems = getMissedWorkItems();
+  const visibleLimit = Number.isFinite(limit) ? Math.max(0, Number(limit)) : allItems.length;
+  const items = allItems.slice(0, visibleLimit);
+
+  return {
+    total: allItems.length,
+    days: new Set(allItems.map((item) => item.date)).size,
+    hidden: Math.max(0, allItems.length - items.length),
+    items,
+    signature: getMissedWorkSignature(allItems),
+  };
+}
+
+function getMissedWorkItems() {
+  const today = toDateKey(new Date());
+  const oldestDate = addDays(today, -MISSED_WORK_LOOKBACK_DAYS);
+  const items = [];
+  const seen = new Set();
+
+  const addItem = (tracker, date, reason) => {
+    if (!tracker || !date || date >= today) return;
+    if (isTrackerCompleteForDate(tracker, date)) return;
+
+    const key = `${tracker.id}:${date}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const plannedTime = getEffectivePlannedTime(tracker, date);
+    items.push({
+      tracker,
+      date,
+      reason,
+      plannedTime,
+      ageDays: getDateDistanceInDays(date, today),
+      sortTime: timeToMinutes(plannedTime) ?? 1440,
+    });
+  };
+
+  state.trackers.forEach((tracker) => {
+    const delay = getDelayInfo(tracker);
+    if (delay?.targetDate && delay.targetDate < today) {
+      addItem(tracker, delay.targetDate, "delayed");
+    }
+
+    if (!isMissedWorkEligibleTracker(tracker)) return;
+
+    let cursor = tracker.startDate || toDateKey(new Date(tracker.createdAt || Date.now()));
+    if (cursor < oldestDate) cursor = oldestDate;
+
+    while (cursor < today) {
+      if (!isDelayedOriginalDate(tracker, cursor) && shouldShowTracker(tracker, cursor)) {
+        addItem(tracker, cursor, "task");
+      }
+      cursor = addDays(cursor, 1);
+    }
+  });
+
+  return items.sort((a, b) => {
+    const dateDiff = b.date.localeCompare(a.date);
+    if (dateDiff) return dateDiff;
+    const timeDiff = a.sortTime - b.sortTime;
+    if (timeDiff) return timeDiff;
+    return String(a.tracker.name || "").localeCompare(String(b.tracker.name || ""));
+  });
+}
+
+function isMissedWorkEligibleTracker(tracker) {
+  return tracker?.type === "task";
+}
+
+function isDelayedOriginalDate(tracker, date) {
+  const delay = getDelayInfo(tracker);
+  return Boolean(delay && delay.originalDate === date && delay.targetDate !== date);
+}
+
+function getMissedWorkSignature(items) {
+  const today = toDateKey(new Date());
+  if (!items.length) return `${today}|clear`;
+
+  const itemSignature = items
+    .slice(0, 20)
+    .map((item) => {
+      const delay = getDelayInfo(item.tracker);
+      const stamp = delay?.updatedAt || item.tracker.createdAt || "";
+      return `${item.date}:${item.tracker.id}:${item.reason}:${stamp}`;
+    })
+    .join("|");
+
+  return `${today}|${items.length}|${itemSignature}`;
+}
+
+function getMissedWorkAgeLabel(date) {
+  const ageDays = getDateDistanceInDays(date, toDateKey(new Date()));
+  if (ageDays <= 1) return "Yesterday";
+  return `${ageDays} days overdue`;
+}
+
+function getDateDistanceInDays(startDate, endDate) {
+  const start = parseDateKey(startDate);
+  const end = parseDateKey(endDate);
+  const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return Math.max(0, diff);
 }
 
 function getCompletionStatsForDate(date) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "dailytrack-shell-v1.0.0-mobile";
+const CACHE_NAME = "dailytrack-shell-v1.1.1-mobile-app";
 const APP_SHELL = [
   "./",
   "./index.html",
